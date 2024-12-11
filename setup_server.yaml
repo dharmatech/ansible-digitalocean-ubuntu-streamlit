@@ -1,0 +1,276 @@
+---
+
+# - name: apt
+#   hosts: target
+#   tasks:
+
+#     - name: apt
+#       become: true
+#       apt:
+#         name:
+#           - python3-venv
+#         state: present
+
+# - name: pip
+#   hosts: target
+#   tasks:
+
+#     - name: pip
+#       pip:
+#         virtualenv_command: python3 -m venv
+#         virtualenv: /home/dharmatech/python-environments/env-3.10-streamlit
+#         name: 
+#           - streamlit
+#           - plotly
+
+- name: install streamlit
+  hosts: target
+  tasks:
+
+    - name: apt install python3-venv
+      become: true
+      apt:
+        name:
+          - python3-venv
+        state: present
+
+    - name: pip install streamlit plotly
+      pip:
+        virtualenv_command: python3 -m venv
+        virtualenv: /home/dharmatech/python-environments/env-3.10-streamlit
+        name: 
+          - streamlit
+          - plotly
+
+- name: ufw
+  hosts: target
+  become: true
+  tasks:
+    - name: enable
+      ufw:
+        state: enabled
+    - name: 8501
+      ufw:
+        port: 8501
+        rule: allow
+    - name: OpenSSH
+      ufw:
+        name: OpenSSH
+        rule: allow
+
+- name: systemd streamlit hello
+  hosts: target
+  become: true
+  tasks:
+
+    - name: streamlit-hello.sh
+      become: false
+      copy:
+        dest: /home/dharmatech/streamlit-hello.sh
+        mode: 0755
+        content: |
+          #!/bin/bash
+
+          . /home/dharmatech/python-environments/env-3.10-streamlit/bin/activate
+
+          # streamlit hello
+
+          streamlit hello \
+                  --server.address 127.0.0.1 \
+                  --server.port 8501 \
+                  --server.enableCORS false
+
+
+    - name: /etc/systemd/system/streamlit-hello.service
+      copy:
+        dest: /etc/systemd/system/streamlit-hello.service
+        content: |
+          [Unit]
+          Description=streamlit hello
+          
+          [Service]
+          ExecStart=/home/dharmatech/streamlit-hello.sh
+          
+          [Install]
+          WantedBy=multi-user.target
+
+    - name: systemctl daemon-reload
+      command: systemctl daemon-reload
+
+    - name: Enable streamlit-hello
+      systemd:
+        name: streamlit-hello
+        enabled: true
+
+    - name: Start streamlit-hello
+      systemd:
+        name: streamlit-hello
+        state: started          
+
+- name: apache
+  vars:
+    app_user: "dharmatech"
+    http_host: "test-02.dharmatech.dev"
+    http_conf: "test-02.dharmatech.dev.conf"
+    http_port: "80"
+    disable_default: true    
+  hosts: target
+  become: true
+  tags: apache
+  tasks:
+
+    - name: apt update
+      apt:
+        update_cache: yes
+
+    # - name: apt apache2
+    #   become: true
+    #   apt:
+    #     name:
+    #       - apache2
+    #     state: present
+
+    - name: Install Apache
+      apt: name=apache2 update_cache=yes state=latest
+
+    - name: modules
+      apache2_module:
+        state: present
+        name: "{{ item }}"
+      loop:
+        - proxy
+        - proxy_http
+        - proxy_balancer
+        - lbmethod_byrequests
+        - rewrite
+
+    - name: Create document root
+      file:
+        path: "/var/www/{{ http_host }}"
+        state: directory
+        owner: "{{ app_user }}"
+        mode: '0755'
+    
+    - name: Copy index test page
+      template:
+        src: "files/index.html.j2"
+        dest: "/var/www/{{ http_host }}/index.html"
+
+    - name: Set up Apache virtualhost
+      template:
+        src: "files/apache.conf.j2"
+        dest: "/etc/apache2/sites-available/{{ http_conf }}"
+
+    - name: Enable new site
+      shell: /usr/sbin/a2ensite {{ http_conf }}
+      notify: Reload Apache
+
+    - name: Disable default Apache site
+      shell: /usr/sbin/a2dissite 000-default.conf
+      when: disable_default
+      notify: Reload Apache
+
+    - name: ufw
+      ufw:
+        name: Apache Full
+        rule: allow
+
+  handlers:
+    - name: Reload Apache
+      service:
+        name: apache2
+        state: reloaded
+
+    - name: Restart Apache
+      service:
+        name: apache2
+        state: restarted
+          
+- name: let's encrypt
+
+  hosts: target
+  tags: letsencrypt
+  tasks:
+
+    - name: apt update
+      become: true
+      apt:
+        update_cache: yes
+
+    # - name: apt update; become: true; apt: { update_cache: yes }
+
+    - name: apt
+      become: true
+      apt:
+        name:
+          - certbot
+          - python3-certbot-apache
+        state: present
+
+    - name: Obtain and configure SSL certificate using Certbot
+      become: true
+      shell: >
+        certbot --apache --agree-tos --email wayo.cavazos@gmail.com --non-interactive --domains test-02.dharmatech.dev
+    #   args:
+    #     warn: false
+    #   register: certbot_output
+
+    # - name: Debug Certbot output
+    #   debug:
+    #     msg: "{{ certbot_output.stdout }}"
+
+    # - name: ufw
+    #   become: true
+    #   ufw:
+    #     name: HTTPS
+    #     rule: allow
+
+    # - name: certbot
+    #   command: certbot --nginx
+
+    # - name: certbot
+    #   command: certbot renew
+
+- name: apache ssl config
+  hosts: target
+  become: true
+  tasks:
+
+    - name: ls-ssl.conf
+      become: true
+      copy:
+        dest: /etc/apache2/sites-available/test-02.dharmatech.dev-le-ssl.conf
+        mode: 0644
+        content: |
+          <IfModule mod_ssl.c>
+          <VirtualHost *:443>
+              ServerAdmin webmaster@localhost
+              ServerName test-02.dharmatech.dev
+              # ServerAlias www.test-02.dharmatech.dev
+              DocumentRoot /var/www/test-02.dharmatech.dev
+              ErrorLog ${APACHE_LOG_DIR}/error.log
+              CustomLog ${APACHE_LOG_DIR}/access.log combined
+
+              RewriteEngine On
+              RewriteCond %{HTTP:Upgrade} =websocket [NC]
+              RewriteRule /(.*)         ws://127.0.0.1:8501/$1 [P,L]
+
+              RewriteCond %{HTTP:Upgrade} !=websocket [NC]
+              RewriteRule /(.*)           http://127.0.0.1:8501/$1 [P,L]
+
+              ProxyPass        / http://127.0.0.1:8501
+              ProxyPassReverse / http://127.0.0.1:8501
+
+              ProxyPass        / ws://127.0.0.1:8501
+              ProxyPassReverse / ws://127.0.0.1:8501
+
+              Include /etc/letsencrypt/options-ssl-apache.conf
+              SSLCertificateFile /etc/letsencrypt/live/test-02.dharmatech.dev/fullchain.pem
+              SSLCertificateKeyFile /etc/letsencrypt/live/test-02.dharmatech.dev/privkey.pem
+          </VirtualHost>
+          </IfModule>
+          
+    - name: Reload Apache
+      service:
+        name: apache2
+        state: reloaded

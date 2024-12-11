@@ -1,0 +1,14 @@
+#cloud-config
+timezone: America/Los_Angeles
+# timezone: America/New_York
+users:
+  - name: dharmatech
+    groups: sudo
+    shell: /bin/bash
+    sudo: ['ALL=(ALL) NOPASSWD:ALL']
+    ssh-authorized-keys:
+      - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINwlX/zu13677yPO6Ol1AV8EHQwdn9RHEDh8Jx6AFWSK dharm@X1Y
+      - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMt6wB9mrzMdaOELq/IsMr8Fdyzzjog39b/WnJ1Qg6Pn dharmatech@X1Y WSL
+      - ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQDIs1/ctfQQdBEMXVKNEgV+X6uyegvANMKag82PzizPigLCKD/Y5Yggx/CkKqIaVW75/bgrvGIkQNeSLksl/onEq9wu7buzRg8CW8sjrWaaKB4hEiUV/qHTMxNk8qBDPy5sfUyUlp3BzCniIf+Ms8jQRmbgg3MMBK6F+OMGIs3ciDsqlXPZ9iUDG+PWsIlPq4xNVzZ4LzbBs56sDF8jVyFFIO3oM/fJMYDxdsVzQ0EUBCO30R/jS76OyRXpK+9pUQXVQ7Xh5JDXqJN8EuYsvuqNxiV7dH5pM+UHahT5zXEUm3PR3wS1TCbBVmbM+U5PvewkHkCX6Tu+hY8kGrnuhK6YOIbPoOmEAnrrODjCuAaj1gORuKnkZ9of//4JHvCn2LuoZ1OxJ21mU47pLuTUwl73c52hROL7T+nwc13a5dtnsioeB8lwI1eyUlKHUB8MGl47eJhTWpz0DqTIHGIlD0Y3KNWCk6lc80xJXDnVi0bIoZ0arxKpiDpOtbEDIOX+yI8= dharm@X1E
+      - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAICE4UEX2ha2cl+RImFpwKVDtHrLphX5WweZb5Ak+p5Nr dharmatech@X1E WSL
+
