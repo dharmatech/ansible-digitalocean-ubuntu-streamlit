@@ -1,43 +1,21 @@
 ---
 
-# - name: apt
-#   hosts: target
-#   tasks:
-
-#     - name: apt
-#       become: true
-#       apt:
-#         name:
-#           - python3-venv
-#         state: present
-
-# - name: pip
-#   hosts: target
-#   tasks:
-
-#     - name: pip
-#       pip:
-#         virtualenv_command: python3 -m venv
-#         virtualenv: /home/dharmatech/python-environments/env-3.10-streamlit
-#         name: 
-#           - streamlit
-#           - plotly
+# ansible-playbook --inventory inventory.ini setup_server.yaml
 
 - name: install streamlit
   hosts: target
   tasks:
-
+    
     - name: apt install python3-venv
       become: true
       apt:
-        name:
-          - python3-venv
+        name: python3-venv
         state: present
 
     - name: pip install streamlit plotly
       pip:
         virtualenv_command: python3 -m venv
-        virtualenv: /home/dharmatech/python-environments/env-3.10-streamlit
+        virtualenv: "{{ venv_environment }}"
         name: 
           - streamlit
           - plotly
@@ -66,12 +44,12 @@
     - name: streamlit-hello.sh
       become: false
       copy:
-        dest: /home/dharmatech/streamlit-hello.sh
+        dest: "{{ streamlit_start_script }}"
         mode: 0755
         content: |
           #!/bin/bash
 
-          . /home/dharmatech/python-environments/env-3.10-streamlit/bin/activate
+          . {{ venv_environment }}/bin/activate
 
           # streamlit hello
 
@@ -79,7 +57,6 @@
                   --server.address 127.0.0.1 \
                   --server.port 8501 \
                   --server.enableCORS false
-
 
     - name: /etc/systemd/system/streamlit-hello.service
       copy:
@@ -89,7 +66,7 @@
           Description=streamlit hello
           
           [Service]
-          ExecStart=/home/dharmatech/streamlit-hello.sh
+          ExecStart={{ streamlit_start_script }}
           
           [Install]
           WantedBy=multi-user.target
@@ -109,9 +86,6 @@
 
 - name: apache
   vars:
-    app_user: "dharmatech"
-    http_host: "test-02.dharmatech.dev"
-    http_conf: "test-02.dharmatech.dev.conf"
     http_port: "80"
     disable_default: true    
   hosts: target
@@ -123,16 +97,12 @@
       apt:
         update_cache: yes
 
-    # - name: apt apache2
-    #   become: true
-    #   apt:
-    #     name:
-    #       - apache2
-    #     state: present
-
-    - name: Install Apache
-      apt: name=apache2 update_cache=yes state=latest
-
+    - name: apt apache2
+      become: true
+      apt:
+        name: apache2
+        state: present
+    
     - name: modules
       apache2_module:
         state: present
@@ -146,7 +116,7 @@
 
     - name: Create document root
       file:
-        path: "/var/www/{{ http_host }}"
+        path: "/var/www/{{ fqdn }}"
         state: directory
         owner: "{{ app_user }}"
         mode: '0755'
@@ -154,15 +124,15 @@
     - name: Copy index test page
       template:
         src: "files/index.html.j2"
-        dest: "/var/www/{{ http_host }}/index.html"
+        dest: "/var/www/{{ fqdn }}/index.html"
 
     - name: Set up Apache virtualhost
       template:
         src: "files/apache.conf.j2"
-        dest: "/etc/apache2/sites-available/{{ http_conf }}"
+        dest: "/etc/apache2/sites-available/{{ fqdn }}.conf"
 
     - name: Enable new site
-      shell: /usr/sbin/a2ensite {{ http_conf }}
+      shell: /usr/sbin/a2ensite {{ fqdn }}.conf
       notify: Reload Apache
 
     - name: Disable default Apache site
@@ -197,8 +167,6 @@
       apt:
         update_cache: yes
 
-    # - name: apt update; become: true; apt: { update_cache: yes }
-
     - name: apt
       become: true
       apt:
@@ -210,26 +178,7 @@
     - name: Obtain and configure SSL certificate using Certbot
       become: true
       shell: >
-        certbot --apache --agree-tos --email wayo.cavazos@gmail.com --non-interactive --domains test-02.dharmatech.dev
-    #   args:
-    #     warn: false
-    #   register: certbot_output
-
-    # - name: Debug Certbot output
-    #   debug:
-    #     msg: "{{ certbot_output.stdout }}"
-
-    # - name: ufw
-    #   become: true
-    #   ufw:
-    #     name: HTTPS
-    #     rule: allow
-
-    # - name: certbot
-    #   command: certbot --nginx
-
-    # - name: certbot
-    #   command: certbot renew
+        certbot --apache --agree-tos --email {{ email }} --non-interactive --domains {{ fqdn }}
 
 - name: apache ssl config
   hosts: target
@@ -239,15 +188,15 @@
     - name: ls-ssl.conf
       become: true
       copy:
-        dest: /etc/apache2/sites-available/test-02.dharmatech.dev-le-ssl.conf
+        dest: /etc/apache2/sites-available/{{ fqdn }}-le-ssl.conf
         mode: 0644
         content: |
           <IfModule mod_ssl.c>
           <VirtualHost *:443>
               ServerAdmin webmaster@localhost
-              ServerName test-02.dharmatech.dev
-              # ServerAlias www.test-02.dharmatech.dev
-              DocumentRoot /var/www/test-02.dharmatech.dev
+              ServerName {{ fqdn }}
+              # ServerAlias www.{{ fqdn }}
+              DocumentRoot /var/www/{{ fqdn }}
               ErrorLog ${APACHE_LOG_DIR}/error.log
               CustomLog ${APACHE_LOG_DIR}/access.log combined
 
@@ -265,8 +214,8 @@
               ProxyPassReverse / ws://127.0.0.1:8501
 
               Include /etc/letsencrypt/options-ssl-apache.conf
-              SSLCertificateFile /etc/letsencrypt/live/test-02.dharmatech.dev/fullchain.pem
-              SSLCertificateKeyFile /etc/letsencrypt/live/test-02.dharmatech.dev/privkey.pem
+              SSLCertificateFile    /etc/letsencrypt/live/{{ fqdn }}/fullchain.pem
+              SSLCertificateKeyFile /etc/letsencrypt/live/{{ fqdn }}/privkey.pem
           </VirtualHost>
           </IfModule>
           
@@ -274,3 +223,7 @@
       service:
         name: apache2
         state: reloaded
+
+
+
+

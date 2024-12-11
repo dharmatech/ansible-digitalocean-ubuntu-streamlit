@@ -1,9 +1,9 @@
-ServerName {{ http_host }}
+ServerName {{ fqdn }}
 
 <VirtualHost *:{{ http_port }}>
     ServerAdmin webmaster@localhost
-    # ServerAlias www.{{ http_host }}
-    DocumentRoot /var/www/{{ http_host }}
+    # ServerAlias www.{{ fqdn }}
+    DocumentRoot /var/www/{{ fqdn }}
     ErrorLog ${APACHE_LOG_DIR}/error.log
     CustomLog ${APACHE_LOG_DIR}/access.log combined
 </VirtualHost>
